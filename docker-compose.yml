@@ -1,0 +1,26 @@
+services:
+  gophish:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    image: gophish-local:latest
+    pull_policy: build
+    restart: unless-stopped
+    ports:
+      # Bind to loopback only — MiaB's nginx reverse-proxies 443 to port 8080
+      - "127.0.0.1:8080:8080"
+      # Admin UI: reach via SSH tunnel (ssh -L 3333:127.0.0.1:3333 user@server)
+      - "127.0.0.1:3333:3333"
+    environment:
+      PHISH_LISTEN_URL: "0.0.0.0:8080"
+      PHISH_USE_TLS: "false"
+      ADMIN_LISTEN_URL: "0.0.0.0:3333"
+      ADMIN_USE_TLS: "false"
+      # Public origin(s) of the admin UI behind MiaB's nginx (CSRF/Origin check)
+      ADMIN_TRUSTED_ORIGINS: ""
+      DB_FILE_PATH: "/data/gophish.db"
+    volumes:
+      - gophish-data:/data
+
+volumes:
+  gophish-data:

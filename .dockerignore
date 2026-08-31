@@ -1,0 +1,12 @@
+.git
+node_modules
+*.db
+config.json.tmp
+gophish_admin.crt
+gophish_admin.key
+*.key
+*.crt
+*.pem
+deployment/
+*.tar.gz
+*.log

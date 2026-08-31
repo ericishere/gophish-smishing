@@ -1,0 +1,250 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Enterprise SMS Automation Console</title>
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet">
+    <style>
+        body { background-color: #f8f9fa; font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif; }
+        .card { border-radius: 12px; box-shadow: 0 4px 12px rgba(0,0,0,0.05); border: none; margin-bottom: 1.5rem; }
+        .terminal-box { background-color: #1e1e1e; color: #00ff00; font-family: 'Courier New', Courier, monospace; padding: 15px; border-radius: 6px; min-height: 250px; max-height: 350px; overflow-y: auto; white-space: pre-wrap; }
+        .step-header { border-bottom: 2px solid #dee2e6; padding-bottom: 0.5rem; margin-bottom: 1rem; font-weight: 600; color: #495057; }
+        .table-responsive { max-height: 300px; overflow-y: auto; }
+    </style>
+</head>
+<body>
+    <div class="container py-5">
+        <div class="row justify-content-center">
+            <div class="col-xl-10 col-lg-11">
+
+                <div class="text-center mb-5">
+                    <h1 class="fw-bold text-dark">SMS Phishing Campaign Control Panel</h1>
+
+                </div>
+
+                <div class="card p-4">
+                    <h5 class="step-header text-primary">Step 1: Campaign Configuration & Setup</h5>
+                    <form id="parseForm" enctype="multipart/form-data">
+                        <div class="mb-3">
+                            <label for="csv_file" class="form-label fw-bold">Upload Gophish Target URL (CSV)</label>
+                            <input class="form-control" type="file" id="csv_file" name="csv_file" accept=".csv" required>
+                        </div>
+                        <div class="mb-3">
+                            <label for="template" class="form-label fw-bold">SMS Content Template</label>
+                            <textarea class="form-control" id="template" name="template" rows="3" required>金沙中國 IT: 您公司 MFA 驗證帳戶偵測到異常登入。為確保帳號安全，請點下方鏈接驗證 {url}</textarea>
+                        </div>
+                        <button type="submit" class="btn btn-primary w-100 fw-bold" id="parseBtn">Parse Data Matrix</button>
+                    </form>
+                </div>
+
+                <div id="previewSection" class="card p-4 d-none">
+                    <h5 class="step-header text-warning">Step 2: Data Validation & CLI Dry-Run Simulator</h5>
+
+                    <div class="row">
+                        <div class="col-md-6 mb-3">
+                            <label class="form-label fw-bold text-secondary">Parsed Recipient Structure Data</label>
+                            <div class="table-responsive border rounded bg-white">
+                                <table class="table table-sm table-striped mb-0 align-middle">
+                                    <thead class="table-light">
+                                        <tr>
+                                            <th>Phone (Position)</th>
+                                            <th>Injected Content Preview</th>
+                                        </tr>
+                                    </thead>
+                                    <tbody id="parsedDataBody"></tbody>
+                                </table>
+                            </div>
+                        </div>
+
+                        <div class="col-md-6 mb-3">
+                            <div class="d-flex justify-content-between align-items-center mb-2">
+                                <label class="form-label fw-bold text-secondary mb-0">Python Script Terminal Output</label>
+                                <button type="button" class="btn btn-outline-primary btn-sm fw-bold" id="realDryRunBtn">
+                                    Dry-Run Preview
+                                </button>
+                            </div>
+                            <div class="terminal-box" id="terminalLogs">Click the button above to capture real command outputs...</div>
+                        </div>
+                    </div>
+
+                    <div class="alert alert-secondary d-flex justify-content-between align-items-center mt-2" role="alert">
+                        <div><strong>Need manual execution?</strong> You can download the UTF-8 formatted target list for Excel.</div>
+                        <button type="button" class="btn btn-dark btn-sm fw-bold" id="downloadCsvBtn">Download Finalized CSV (BOM Enabled)</button>
+                    </div>
+                </div>
+
+                <div id="executionSection" class="card p-4 d-none">
+                    <h5 class="step-header text-danger">Step 3: Hardware Transmission Over ADB</h5>
+                    <div class="row mb-4">
+                        <div class="col-md-6 mb-3 mb-md-0">
+                            <label for="method" class="form-label fw-bold">ADB Signaling Gateway Method</label>
+                        <select class="form-select" id="method">
+                            <option value="intent" selected>Intent Mode (Launches stock Android UI)</option>
+                            <option value="service">Service Mode (Direct ISms internal calls)</option>
+                        </select>
+                        </div>
+                        <div class="col-md-6">
+                            <label for="sub_id" class="form-label fw-bold">SIM Slot Subscription Token (sub_id)</label>
+                            <input type="number" class="form-control" id="sub_id" value="1" min="0">
+                        </div>
+                    </div>
+                    <button type="button" class="btn btn-danger w-100 py-3 fw-bold fs-5" id="executeBtn">LAUNCH SMS TRANSMISSION</button>
+                </div>
+
+                <div id="statusReportCard" class="card p-4 bg-dark text-white d-none">
+                    <h5 class="fw-bold mb-3 text-info">Live Gateway Dispatch Logs</h5>
+                    <div id="reportSummary" class="alert alert-info py-2 font-monospace"></div>
+                    <div class="table-responsive">
+                        <table class="table table-sm table-dark table-bordered mb-0">
+                            <thead>
+                                <tr>
+                                    <th>Target Recipient</th>
+                                    <th>Gateway Status</th>
+                                </tr>
+                            </thead>
+                            <tbody id="reportDetailsBody"></tbody>
+                        </table>
+                    </div>
+                </div>
+
+            </div>
+        </div>
+    </div>
+
+    <script>
+        let globalCachedRows = [];
+
+        // Step 1: Parse CSV data matrix
+        document.getElementById('parseForm').addEventListener('submit', function(e) {
+            e.preventDefault();
+            const parseBtn = document.getElementById('parseBtn');
+            parseBtn.disabled = true;
+
+            const formData = new FormData(this);
+            fetch('/parse', { method: 'POST', body: formData })
+            .then(res => res.json())
+            .then(data => {
+                parseBtn.disabled = false;
+                if (data.success) {
+                    globalCachedRows = data.rows;
+                    document.getElementById('previewSection').classList.remove('d-none');
+                    document.getElementById('executionSection').classList.remove('d-none');
+
+                    const dataBody = document.getElementById('parsedDataBody');
+                    dataBody.innerHTML = '';
+                    data.rows.forEach(r => {
+                        dataBody.innerHTML += `<tr>
+                            <td><code>${r.recipient}</code></td>
+                            <td><small class="text-muted">${r.full_content}</small></td>
+                        </tr>`;
+                    });
+                    document.getElementById('terminalLogs').innerText = "Data matrix loaded. Click 'Dry-Run Preview' to evaluate real terminal output stream.";
+                } else {
+                    alert("Parsing Error: " + data.message);
+                }
+            });
+        });
+
+        // NEW: Trigger the real python send_sms.py --dry-run sequence via subprocess pipeline
+        document.getElementById('realDryRunBtn').addEventListener('click', function() {
+            if (!globalCachedRows || globalCachedRows.length === 0) return;
+
+            const runBtn = document.getElementById('realDryRunBtn');
+            const logBox = document.getElementById('terminalLogs');
+
+            runBtn.disabled = true;
+            runBtn.innerText = "Running script...";
+                
+            // Updated preview to match your real command execution pattern
+            const selectedMethod = document.getElementById('method').value;
+            logBox.innerText = `$ python send_sms.py --delay 3 --method ${selectedMethod} --dry-run temp_web_dry_run.csv\n[Communicating with sub-shell process, please wait]`;
+
+            fetch('/real_dry_run', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({
+                    rows: globalCachedRows,
+                    method: document.getElementById('method').value,
+                    sub_id: document.getElementById('sub_id').value
+                })
+            })
+            .then(res => res.json())
+            .then(data => {
+                runBtn.disabled = false;
+                runBtn.innerText = "Dry-Run Preview";
+                logBox.innerText = data.output;
+            })
+            .catch(err => {
+                runBtn.disabled = false;
+                runBtn.innerText = "Dry-Run Preview";
+                logBox.innerText = "Subprocess pipeline broken: " + err;
+            });
+        });
+
+        // Backup Download Feature with UTF-8 Excel BOM Injection
+        document.getElementById('downloadCsvBtn').addEventListener('click', function() {
+            if (!globalCachedRows || globalCachedRows.length === 0) return;
+            let csvContent = "Recipient,Content\n";
+            globalCachedRows.forEach(row => {
+                let escapedContent = row.full_content.replace(/"/g, '""');
+                csvContent += `${row.recipient},"${escapedContent}"\n`;
+            });
+            const blob = new Blob(["\ufeff" + csvContent], { type: 'text/csv;charset=utf-8;' });
+            const url = URL.createObjectURL(blob);
+            const link = document.createElement("a");
+            link.setAttribute("href", url);
+            link.setAttribute("download", "messages.csv");
+            document.body.appendChild(link);
+            link.click();
+            document.body.removeChild(link);
+        });
+
+        // Step 3: Real Hardware Signaling broadcast via ADB channel
+        document.getElementById('executeBtn').addEventListener('click', function() {
+            if (!globalCachedRows || globalCachedRows.length === 0) return;
+            if (!confirm("Launch live hardware transmission over connected USB ports?")) return;
+
+            const executeBtn = document.getElementById('executeBtn');
+            executeBtn.disabled = true;
+            executeBtn.innerText = "BROADCASTING PAYLOADS VIA ADB LINK...";
+
+            fetch('/execute', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({
+                    rows: globalCachedRows,
+                    method: document.getElementById('method').value,
+                    sub_id: document.getElementById('sub_id').value
+                })
+            })
+            .then(res => res.json())
+            .then(data => {
+                executeBtn.disabled = false;
+                executeBtn.innerText = "LAUNCH SMS TRANSMISSION";
+
+                const reportCard = document.getElementById('statusReportCard');
+                reportCard.classList.remove('d-none');
+
+                const reportSummary = document.getElementById('reportSummary');
+                const reportDetailsBody = document.getElementById('reportDetailsBody');
+                reportDetailsBody.innerHTML = '';
+
+                reportSummary.className = data.success ? "alert alert-success py-2 font-monospace" : "alert alert-danger py-2 font-monospace";
+                reportSummary.innerText = data.message;
+
+                if (data.detail) {
+                    data.detail.forEach(item => {
+                        const isSuccess = item.status === 'SUCCESS';
+                        reportDetailsBody.innerHTML += `<tr>
+                            <td><code>${item.recipient}</code></td>
+                            <td><span class="badge ${isSuccess ? 'bg-success' : 'bg-danger'}">${item.status}</span></td>
+                        </tr>`;
+                    });
+                }
+                reportCard.scrollIntoView({ behavior: 'smooth' });
+            });
+        });
+    </script>
+</body>
+</html>
