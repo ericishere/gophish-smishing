@@ -30,6 +30,16 @@ func CSRFExceptions(handler http.Handler) http.HandlerFunc {
 	}
 }
 
+// PlaintextHTTP marks requests as plaintext HTTP for gorilla/csrf 1.7+, which
+// otherwise assumes TLS and enforces strict Origin/Referer checks that
+// plaintext HTTP deployments (and browsers sending http:// Origin headers)
+// would fail.
+func PlaintextHTTP(handler http.Handler) http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		handler.ServeHTTP(w, csrf.PlaintextHTTPRequest(r))
+	}
+}
+
 // Use allows us to stack middleware to process the request
 // Example taken from https://github.com/gorilla/mux/pull/36#issuecomment-25849172
 func Use(handler http.HandlerFunc, mid ...func(http.Handler) http.HandlerFunc) http.HandlerFunc {

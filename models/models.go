@@ -161,7 +161,8 @@ func Setup(c *config.Config) error {
 				return err
 			}
 			mysql.RegisterTLSConfig("ssl_ca", &tls.Config{
-				RootCAs: rootCertPool,
+				RootCAs:    rootCertPool,
+				MinVersion: tls.VersionTLS12,
 			})
 			// Default database is sqlite3, which supports no tls, as connection
 			// is file based

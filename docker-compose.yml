@@ -2,7 +2,7 @@ services:
   gophish:
     build:
       context: .
-      dockerfile: Dockerfile
+      dockerfile: Dockerfile.alpine
     image: gophish-local:latest
     pull_policy: build
     restart: unless-stopped
@@ -13,9 +13,9 @@ services:
       - "127.0.0.1:3333:3333"
     environment:
       PHISH_LISTEN_URL: "0.0.0.0:8080"
-      PHISH_USE_TLS: "false"
+      PHISH_USE_TLS: "true"
       ADMIN_LISTEN_URL: "0.0.0.0:3333"
-      ADMIN_USE_TLS: "false"
+      ADMIN_USE_TLS: "true"
       # Public origin(s) of the admin UI behind MiaB's nginx (CSRF/Origin check)
       ADMIN_TRUSTED_ORIGINS: ""
       DB_FILE_PATH: "/data/gophish.db"

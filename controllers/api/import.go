@@ -118,7 +118,7 @@ func (as *Server) ImportSite(w http.ResponseWriter, r *http.Request) {
 	tr := &http.Transport{
 		DialContext: restrictedDialer.DialContext,
 		TLSClientConfig: &tls.Config{
-			InsecureSkipVerify: true,
+			MinVersion: tls.VersionTLS12,
 		},
 	}
 	client := &http.Client{Transport: tr}

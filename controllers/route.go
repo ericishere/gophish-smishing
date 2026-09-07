@@ -157,7 +157,13 @@ func (as *AdminServer) registerRoutes() {
 		csrf.Secure(as.config.UseTLS),
 		csrf.TrustedOrigins(as.config.TrustedOrigins))
 	adminHandler := csrfHandler(router)
-	adminHandler = mid.Use(adminHandler.ServeHTTP, mid.CSRFExceptions, mid.GetContext, mid.ApplySecurityHeaders)
+	mids := []func(http.Handler) http.HandlerFunc{mid.CSRFExceptions, mid.GetContext, mid.ApplySecurityHeaders}
+	if !as.config.UseTLS {
+		// csrf 1.7+ validates Origin/Referer as though serving via TLS unless the
+		// request is flagged as plaintext; without this every plain-HTTP POST 403s.
+		mids = append([]func(http.Handler) http.HandlerFunc{mid.PlaintextHTTP}, mids...)
+	}
+	adminHandler = mid.Use(adminHandler.ServeHTTP, mids...)
 
 	// Setup GZIP compression
 	gzipWrapper, _ := gziphandler.NewGzipLevelHandler(gzip.BestCompression)

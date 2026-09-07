@@ -10,3 +10,7 @@ gophish_admin.key
 deployment/
 *.tar.gz
 *.log
+# Build outputs are produced inside the build-js stage (gulp + webpack);
+# never leak stale local dist files into the image.
+static/js/dist/
+static/css/dist/

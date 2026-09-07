@@ -1,5 +1,6 @@
 # Minify client side assets (JavaScript)
-FROM node:18-alpine AS build-js
+# NOTE: node 22 required by webpack-cli 7 (engines: node >= 20.9)
+FROM node:22-alpine AS build-js
 
 RUN npm install gulp gulp-cli -g
 
@@ -7,12 +8,16 @@ WORKDIR /build
 COPY . .
 RUN npm install
 RUN gulp
+# gulp cannot resolve the ES-module entries (passwords/users/webhooks use
+# bare imports like 'zxcvbn'); webpack bundles them properly.
+RUN npx webpack --config webpack.config.js
 
 
 # Build Golang binary
 # NOTE: must be Alpine too — a binary built on the Debian-based golang image
 # links against glibc and won't run on the Alpine runtime.
-FROM golang:1.21-alpine AS build-golang
+# NOTE: golang 1.26+ required by go.mod 'go 1.26.0' directive (upgraded x/* deps)
+FROM golang:1.26-alpine AS build-golang
 
 # CGO is required for mattn/go-sqlite3, so we need a C compiler + musl libc
 RUN apk add --no-cache gcc musl-dev
@@ -29,18 +34,25 @@ RUN go mod edit -replace github.com/mattn/go-sqlite3=github.com/mattn/go-sqlite3
 
 
 # Runtime container
-FROM alpine:3.20
+# NOTE: alpine 3.20 went EOL 2026-04; 3.23 matches the build stage's musl generation
+# and ships patched jq/busybox (fixes CVEs flagged on jq 1.7.1-r0 / busybox 1.36.1-r31).
+FROM alpine:3.23
 
 RUN adduser -D -h /opt/gophish -s /bin/sh app
 
 RUN apk add --no-cache jq libcap ca-certificates bash
+
+# The alpine:3.23 Hub tag can lag the branch repository (e.g. it still shipped
+# openssl 3.5.7-r0 after 3.5.8-r0 fixed CVE-2026-63073/75803); upgrade at build
+# time so the runtime always carries the branch's latest security patches.
+RUN apk upgrade --no-cache
 
 WORKDIR /opt/gophish
 COPY --from=build-golang /go/src/github.com/gophish/gophish/ ./
 COPY --from=build-js /build/static/js/dist/ ./static/js/dist/
 COPY --from=build-js /build/static/css/dist/ ./static/css/dist/
 COPY --from=build-golang /go/src/github.com/gophish/gophish/config.json ./
-RUN chown app. config.json
+RUN chown app:app config.json
 
 RUN setcap 'cap_net_bind_service=+ep' /opt/gophish/gophish
 RUN sed -i 's/\r$//' docker/run.sh && chmod 0755 docker/run.sh
