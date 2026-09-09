@@ -1,5 +1,6 @@
 #!/usr/bin/env python3
 import os
+import sys
 import csv
 import io
 import subprocess
@@ -9,6 +10,21 @@ from flask import Flask, render_template, request, jsonify
 from send_sms import send_via_service, send_via_intent, get_android_version, check_device
 
 app = Flask(__name__, template_folder='.')
+
+# Whitelist of allowed send methods and SIM sub-ids to prevent parameter injection
+ALLOWED_METHODS = {'service', 'intent'}
+
+
+def validate_method(method):
+    return method if method in ALLOWED_METHODS else None
+
+
+def validate_sub_id(sub_id):
+    try:
+        n = int(sub_id)
+        return n if n >= 0 else None
+    except (TypeError, ValueError):
+        return None
 
 
 @app.route('/')
@@ -75,8 +91,12 @@ def parse_only():
 def real_dry_run():
     data = request.get_json() or {}
     rows = data.get('rows', [])
-    method = data.get('method', 'intent')  # Defaulting fallback to intent
-    sub_id = data.get('sub_id', '1')
+    method = validate_method(data.get('method', 'intent'))  # Defaulting fallback to intent
+    if method is None:
+        return jsonify({'success': False, 'output': 'Invalid method. Must be "service" or "intent".'}), 400
+    sub_id = validate_sub_id(data.get('sub_id', '1'))
+    if sub_id is None:
+        return jsonify({'success': False, 'output': 'Invalid sub_id. Must be a non-negative integer.'}), 400
 
     if not rows:
         return jsonify({'success': False, 'output': 'No data available to perform CLI dry-run.'})
@@ -91,7 +111,7 @@ def real_dry_run():
                 writer.writerow([row['recipient'], row['full_content']])
 
         # 2. 組裝符合特定格式的 CLI 指令 (把 flag 放在前面，檔案路徑置於末端)
-        cmd = ["python", "send_sms.py", "--delay", "3", "--method", method, "--dry-run"]
+        cmd = [sys.executable, "send_sms.py", "--delay", "3", "--method", method, "--dry-run"]
         if method == "service":
             cmd.extend(["--sub-id", str(sub_id)])
         cmd.append(temp_csv) # 置於最後
@@ -123,8 +143,12 @@ def real_dry_run():
 def execute_real_send():
     data = request.get_json() or {}
     rows = data.get('rows', [])
-    method = data.get('method', 'service')
-    sub_id = int(data.get('sub_id', 1))
+    method = validate_method(data.get('method', 'service'))
+    if method is None:
+        return jsonify({'success': False, 'message': 'Invalid method. Must be "service" or "intent".'}), 400
+    sub_id = validate_sub_id(data.get('sub_id', 1))
+    if sub_id is None:
+        return jsonify({'success': False, 'message': 'Invalid sub_id. Must be a non-negative integer.'}), 400
 
     if not rows:
         return jsonify({'success': False, 'message': 'No data rows available for execution.'})
@@ -144,8 +168,10 @@ def execute_real_send():
 
         if method == 'service':
             ok, stdout, stderr = send_via_service(recipient, message_content, android_version, sub_id)
-        else:
+        elif method == 'intent':
             ok, stdout, stderr = send_via_intent(recipient, message_content)
+        else:
+            continue
 
         if ok:
             success_count += 1
@@ -164,4 +190,6 @@ def execute_real_send():
 
 
 if __name__ == '__main__':
-    app.run(host='0.0.0.0', port=5000, debug=True)
+    app.run(host=os.environ.get('SMS_WEB_HOST', '127.0.0.1'),
+            port=int(os.environ.get('SMS_WEB_PORT', '5000')),
+            debug=os.environ.get('SMS_WEB_DEBUG', '0') == '1')

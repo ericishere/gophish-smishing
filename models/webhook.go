@@ -2,6 +2,7 @@ package models
 
 import (
 	"errors"
+	"net/url"
 
 	log "github.com/gophish/gophish/logger"
 )
@@ -20,6 +21,9 @@ var ErrURLNotSpecified = errors.New("URL can't be empty")
 
 // ErrNameNotSpecified indicates there was no name specified
 var ErrNameNotSpecified = errors.New("Name can't be empty")
+
+// ErrInvalidURLScheme indicates the URL scheme is not http or https
+var ErrInvalidURLScheme = errors.New("URL scheme must be http or https")
 
 // GetWebhooks returns the webhooks
 func GetWebhooks() ([]Webhook, error) {
@@ -78,6 +82,10 @@ func DeleteWebhook(id int64) error {
 func (wh *Webhook) Validate() error {
 	if wh.URL == "" {
 		return ErrURLNotSpecified
+	}
+	u, err := url.Parse(wh.URL)
+	if err != nil || (u.Scheme != "http" && u.Scheme != "https") {
+		return ErrInvalidURLScheme
 	}
 	if wh.Name == "" {
 		return ErrNameNotSpecified
