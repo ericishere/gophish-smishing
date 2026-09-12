@@ -202,12 +202,38 @@ func TestCampaignExportTargetsCSV(t *testing.T) {
 		t.Fatalf("unexpected email in first data row: %s", records[1][0])
 	}
 
-	// Verify URL column contains the campaign URL with rid parameter
-	if !strings.Contains(records[1][6], "http://example.com") {
-		t.Fatalf("expected URL to contain campaign URL, got %s", records[1][6])
+	// The campaign URL has no path, so the exported unique URL must be
+	// normalized to "http://example.com/?rid=..." rather than
+	// "http://example.com?rid=...".
+	if !strings.HasPrefix(records[1][6], "http://example.com/?rid=") {
+		t.Fatalf("expected normalized unique URL, got %s", records[1][6])
 	}
-	if !strings.Contains(records[1][6], "rid=") {
-		t.Fatalf("expected URL to contain rid parameter, got %s", records[1][6])
+	if strings.Contains(records[1][6], "/track") {
+		t.Fatalf("unique URL should not point at the tracking endpoint, got %s", records[1][6])
+	}
+	// The tracking URL is unchanged by the normalization.
+	if !strings.HasPrefix(records[1][7], "http://example.com/track?rid=") {
+		t.Fatalf("expected tracking URL, got %s", records[1][7])
+	}
+}
+
+func TestNormalizeExportedURL(t *testing.T) {
+	cases := []struct {
+		in   string
+		want string
+	}{
+		{"", ""},
+		{"http://example.com?rid=abc", "http://example.com/?rid=abc"},
+		{"http://example.com/?rid=abc", "http://example.com/?rid=abc"},
+		{"http://example.com:8080?rid=abc", "http://example.com:8080/?rid=abc"},
+		{"https://example.com:8443?rid=abc&extra=1", "https://example.com:8443/?rid=abc&extra=1"},
+		{"http://example.com/portal?rid=abc", "http://example.com/portal?rid=abc"},
+		{"http://example.com/portal/?rid=abc", "http://example.com/portal/?rid=abc"},
+	}
+	for _, tc := range cases {
+		if got := normalizeExportedURL(tc.in); got != tc.want {
+			t.Errorf("normalizeExportedURL(%q) = %q, want %q", tc.in, got, tc.want)
+		}
 	}
 }
 

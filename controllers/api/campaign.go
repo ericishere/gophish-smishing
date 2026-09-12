@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"io"
 	"net/http"
+	"net/url"
 	"strconv"
 	"strings"
 
@@ -212,7 +213,7 @@ func (as *Server) CampaignExportTargets(w http.ResponseWriter, r *http.Request) 
 			escapeCSVFormula(result.Position),
 			escapeCSVFormula(result.RId),
 			escapeCSVFormula(result.Status),
-			escapeCSVFormula(ptx.URL),
+			escapeCSVFormula(normalizeExportedURL(ptx.URL)),
 			escapeCSVFormula(ptx.TrackingURL),
 			result.SendDate.Format("2006-01-02 15:04:05"),
 			reported,
@@ -288,6 +289,22 @@ func (as *Server) CampaignSendTargets(w http.ResponseWriter, r *http.Request) {
 func safeFilename(name string) string {
 	name = strings.NewReplacer("\r", "", "\n", "", "\"", "'").Replace(name)
 	return name
+}
+
+// normalizeExportedURL makes sure a URL with an empty path is exported as
+// "http://host:port/?rid=..." instead of "http://host:port?rid=...". The two
+// forms are equivalent over HTTP (the request path is "/" either way), but the
+// explicit slash matches the shape of the tracking URL in the next column.
+func normalizeExportedURL(raw string) string {
+	if raw == "" {
+		return raw
+	}
+	u, err := url.Parse(raw)
+	if err != nil || u.Path != "" {
+		return raw
+	}
+	u.Path = "/"
+	return u.String()
 }
 
 // escapeCSVFormula prevents CSV formula injection by prepending a single quote
