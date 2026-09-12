@@ -216,6 +216,49 @@ function addTarget(firstNameInput, lastNameInput, emailInput, positionInput) {
     }
 }
 
+// generateUsers creates `count` placeholder targets named user001, user002, ...
+// with matching email addresses (user001@localhost). Existing rows with the same
+// email are replaced in place rather than duplicated.
+function generateUsers() {
+    var count = parseInt($("#generateCount").val(), 10)
+    if (isNaN(count) || count < 1 || count > 10000) {
+        modalError("Count must be between 1 and 10000")
+        return
+    }
+    var targetsTable = targets.DataTable()
+    var rows = targetsTable.rows().data().toArray()
+    // Index existing rows by email so generation stays linear for large counts.
+    var existing = {}
+    for (var r = 0; r < rows.length; r++) {
+        existing[String(rows[r][2]).toLowerCase()] = r
+    }
+    for (var i = 1; i <= count; i++) {
+        // Zero-pad to at least three digits: 1 -> "001", 1000 -> "1000"
+        var number = String(i)
+        while (number.length < 3) {
+            number = "0" + number
+        }
+        var email = ("user" + number + "@localhost").toLowerCase()
+        var row = [
+            escapeHtml("User"),
+            escapeHtml(number),
+            escapeHtml(email),
+            "",
+            '<span style="cursor:pointer;"><i class="fa fa-trash-o"></i></span>'
+        ]
+        if (email in existing) {
+            rows[existing[email]] = row
+        } else {
+            existing[email] = rows.length
+            rows.push(row)
+        }
+    }
+    targetsTable.clear()
+    targetsTable.rows.add(rows)
+    targetsTable.draw()
+    successFlash("Generated " + count + " users")
+}
+
 function load() {
     $("#groupTable").hide()
     $("#emptyMessage").hide()
@@ -293,4 +336,6 @@ $(document).ready(function () {
         dismiss();
     });
     $("#csv-template").click(downloadCSVTemplate)
+    // Handle anonymous/bulk user generation
+    $("#generateUsers").click(generateUsers)
 });
