@@ -192,4 +192,6 @@ def execute_real_send():
 if __name__ == '__main__':
     app.run(host=os.environ.get('SMS_WEB_HOST', '127.0.0.1'),
             port=int(os.environ.get('SMS_WEB_PORT', '5000')),
-            debug=os.environ.get('SMS_WEB_DEBUG', '0') == '1')
+            debug=False,
+            use_debugger=False,
+            use_reloader=False)

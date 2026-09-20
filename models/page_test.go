@@ -8,96 +8,52 @@ import (
 )
 
 func (s *ModelsSuite) TestPostPage(c *check.C) {
-	html := `<html>
-			<head></head>
-			<body><form action="example.com">
-				<input name="username"/>
-				<input name="password" type="password"/>
-			</form></body>
-		  </html>`
-	p := Page{
-		Name:        "Test Page",
-		HTML:        html,
-		RedirectURL: "http://example.com",
-	}
-	// Check the capturing credentials and passwords
-	p.CaptureCredentials = true
-	p.CapturePasswords = true
-	err := PostPage(&p)
-	c.Assert(err, check.Equals, nil)
+	html := `<html><body><form id="login" action="https://example.com" method="GET">
+		<input name="username"/><input name="password" type="password"/>
+		<textarea name="account"></textarea><select name="secret"><option>test</option></select>
+		<button name="submit" formaction="https://example.com" formmethod="GET">Submit</button>
+		</form><input form="login" name="external-account"/></body></html>`
+	p := Page{Name: "Test Page", HTML: html, RedirectURL: "http://example.com",
+		CaptureCredentials: true, CapturePasswords: true}
+	c.Assert(PostPage(&p), check.IsNil)
+	assertCaptureDisabled(c, p)
 	c.Assert(p.RedirectURL, check.Equals, "http://example.com")
-	d, err := goquery.NewDocumentFromReader(strings.NewReader(p.HTML))
-	c.Assert(err, check.Equals, nil)
-	forms := d.Find("form")
-	forms.Each(func(i int, f *goquery.Selection) {
-		// Check the action has been set
-		a, _ := f.Attr("action")
-		c.Assert(a, check.Equals, "")
-		// Check the password still has a name
-		_, ok := f.Find("input[type=\"password\"]").Attr("name")
-		c.Assert(ok, check.Equals, true)
-		// Check the username is still correct
-		u, ok := f.Find("input").Attr("name")
-		c.Assert(ok, check.Equals, true)
-		c.Assert(u, check.Equals, "username")
-	})
 
-	// Check what happens when we don't capture passwords
-	p.CapturePasswords = false
+	// API updates cannot re-enable collection either.
+	p.CaptureCredentials, p.CapturePasswords = true, true
 	p.HTML = html
 	p.RedirectURL = ""
-	err = PutPage(&p)
-	c.Assert(err, check.Equals, nil)
+	c.Assert(PutPage(&p), check.IsNil)
+	assertCaptureDisabled(c, p)
 	c.Assert(p.RedirectURL, check.Equals, "")
-	d, err = goquery.NewDocumentFromReader(strings.NewReader(p.HTML))
-	c.Assert(err, check.Equals, nil)
-	forms = d.Find("form")
-	forms.Each(func(i int, f *goquery.Selection) {
-		// Check the action has been set
-		a, _ := f.Attr("action")
-		c.Assert(a, check.Equals, "")
-		// Check the password name has been removed
-		_, ok := f.Find("input[type=\"password\"]").Attr("name")
-		c.Assert(ok, check.Equals, false)
-		// Check the username is still correct
-		u, ok := f.Find("input").Attr("name")
-		c.Assert(ok, check.Equals, true)
-		c.Assert(u, check.Equals, "username")
-	})
 
-	// Check when we don't capture credentials
-	p.CaptureCredentials = false
-	p.HTML = html
-	err = PutPage(&p)
-	c.Assert(err, check.Equals, nil)
-	d, err = goquery.NewDocumentFromReader(strings.NewReader(p.HTML))
-	c.Assert(err, check.Equals, nil)
-	forms = d.Find("form")
-	forms.Each(func(i int, f *goquery.Selection) {
-		// Check the action has been set
-		a, _ := f.Attr("action")
-		c.Assert(a, check.Equals, "")
-		// Check the password name has been removed
-		_, ok := f.Find("input[type=\"password\"]").Attr("name")
-		c.Assert(ok, check.Equals, false)
-		// Check the username name has been removed
-		_, ok = f.Find("input").Attr("name")
-		c.Assert(ok, check.Equals, false)
-	})
+	// Simulate a page saved before collection was disabled. All read paths
+	// must disable its controls without requiring an administrator to resave it.
+	c.Assert(db.Model(&p).Updates(map[string]interface{}{
+		"html": html, "capture_credentials": true, "capture_passwords": true,
+	}).Error, check.IsNil)
+	loaded, err := GetPage(p.Id, p.UserId)
+	c.Assert(err, check.IsNil)
+	assertCaptureDisabled(c, loaded)
+	loaded, err = GetPageByName(p.Name, p.UserId)
+	c.Assert(err, check.IsNil)
+	assertCaptureDisabled(c, loaded)
+	pages, err := GetPages(p.UserId)
+	c.Assert(err, check.IsNil)
+	c.Assert(len(pages), check.Equals, 1)
+	assertCaptureDisabled(c, pages[0])
+}
 
-	// Finally, re-enable capturing passwords (ref: #1267)
-	p.CaptureCredentials = true
-	p.CapturePasswords = true
-	err = PutPage(&p)
-	c.Assert(err, check.Equals, nil)
-	d, err = goquery.NewDocumentFromReader(strings.NewReader(p.HTML))
-	c.Assert(err, check.Equals, nil)
-	forms = d.Find("form")
-	forms.Each(func(i int, f *goquery.Selection) {
-		// Check the password still has a name
-		_, ok := f.Find("input[type=\"password\"]").Attr("name")
-		c.Assert(ok, check.Equals, true)
-	})
+func assertCaptureDisabled(c *check.C, p Page) {
+	c.Assert(p.CaptureCredentials, check.Equals, false)
+	c.Assert(p.CapturePasswords, check.Equals, false)
+	d, err := goquery.NewDocumentFromReader(strings.NewReader(p.HTML))
+	c.Assert(err, check.IsNil)
+	c.Assert(d.Find("[name], [formaction], [formmethod]").Length(), check.Equals, 0)
+	action, _ := d.Find("form").Attr("action")
+	method, _ := d.Find("form").Attr("method")
+	c.Assert(action, check.Equals, "")
+	c.Assert(method, check.Equals, "POST")
 }
 
 func (s *ModelsSuite) TestPageValidation(c *check.C) {
@@ -115,14 +71,12 @@ func (s *ModelsSuite) TestPageValidation(c *check.C) {
 
 	p.Name = "Test Page"
 
-	// Validate that CaptureCredentials is automatically set if somehow the
-	// user fails to set it, but does indicate that passwords should be
-	// captured
-	p.CapturePasswords = true
-	c.Assert(p.CaptureCredentials, check.Equals, false)
+	// Capture settings cannot be enabled through validation.
+	p.CaptureCredentials, p.CapturePasswords = true, true
 	err = p.Validate()
 	c.Assert(err, check.Equals, nil)
-	c.Assert(p.CaptureCredentials, check.Equals, true)
+	c.Assert(p.CaptureCredentials, check.Equals, false)
+	c.Assert(p.CapturePasswords, check.Equals, false)
 
 	// Validate that if the HTML contains an invalid template tag, that we
 	// catch it

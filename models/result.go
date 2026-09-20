@@ -131,7 +131,7 @@ func (r *Result) HandleClickedLink(details EventDetails) error {
 }
 
 // HandleFormSubmit updates a Result in the case where the recipient submitted
-// credentials to the form on a Landing Page.
+// a form on a Landing Page. Field values are not collected.
 func (r *Result) HandleFormSubmit(details EventDetails) error {
 	event, err := r.createEvent(EventDataSubmit, details)
 	if err != nil {

@@ -393,6 +393,9 @@ function doSend(rids) {
 function replay(event_idx) {
     request = campaign.timeline[event_idx]
     details = JSON.parse(request.details)
+    if (!details.payload) {
+        return
+    }
     url = null
     form = $('<form>').attr({
         method: 'POST',
@@ -552,7 +555,7 @@ function renderTimeline(data) {
                         results += deviceView
                     }
                 }
-                if (event.message == "Submitted Data") {
+                if (event.message == "Submitted Data" && details.payload) {
                     results += '<div class="timeline-replay-button"><button onclick="replay(' + i + ')" class="btn btn-success">'
                     results += '<i class="fa fa-refresh"></i> Replay Credentials</button></div>'
                     results += '<div class="timeline-event-details"><i class="fa fa-caret-right"></i> View Details</div>'

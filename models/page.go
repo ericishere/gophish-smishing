@@ -24,47 +24,18 @@ type Page struct {
 // ErrPageNameNotSpecified is thrown if the name of the landing page is blank.
 var ErrPageNameNotSpecified = errors.New("Page Name not specified")
 
-// parseHTML parses the page HTML on save to handle the
-// capturing (or lack thereof!) of credentials and passwords
+// parseHTML disables data collection for both new and previously saved pages.
 func (p *Page) parseHTML() error {
+	p.CaptureCredentials = false
+	p.CapturePasswords = false
 	d, err := goquery.NewDocumentFromReader(strings.NewReader(p.HTML))
 	if err != nil {
 		return err
 	}
-	forms := d.Find("form")
-	forms.Each(func(i int, f *goquery.Selection) {
-		// We always want the submitted events to be
-		// sent to our server
-		f.SetAttr("action", "")
-		if p.CaptureCredentials {
-			// If we don't want to capture passwords,
-			// find all the password fields and remove the "name" attribute.
-			if !p.CapturePasswords {
-				inputs := f.Find("input")
-				inputs.Each(func(j int, input *goquery.Selection) {
-					if t, _ := input.Attr("type"); strings.EqualFold(t, "password") {
-						input.RemoveAttr("name")
-					}
-				})
-			} else {
-				// If the user chooses to re-enable the capture passwords setting,
-				// we need to re-add the name attribute
-				inputs := f.Find("input")
-				inputs.Each(func(j int, input *goquery.Selection) {
-					if t, _ := input.Attr("type"); strings.EqualFold(t, "password") {
-						input.SetAttr("name", "password")
-					}
-				})
-			}
-		} else {
-			// Otherwise, remove the name from all
-			// inputs.
-			inputFields := f.Find("input")
-			inputFields.Each(func(j int, input *goquery.Selection) {
-				input.RemoveAttr("name")
-			})
-		}
-	})
+	// Keep submission tracking without sending form values in the URL.
+	d.Find("form").SetAttr("action", "").SetAttr("method", "POST")
+	// Include controls outside forms that use the HTML form attribute.
+	d.Find("input, textarea, select, button").RemoveAttr("name").RemoveAttr("formaction").RemoveAttr("formmethod")
 	p.HTML, err = d.Html()
 	return err
 }
@@ -74,11 +45,9 @@ func (p *Page) Validate() error {
 	if p.Name == "" {
 		return ErrPageNameNotSpecified
 	}
-	// If the user specifies to capture passwords,
-	// we automatically capture credentials
-	if p.CapturePasswords && !p.CaptureCredentials {
-		p.CaptureCredentials = true
-	}
+	// Legacy API clients cannot re-enable collection.
+	p.CaptureCredentials = false
+	p.CapturePasswords = false
 	if err := ValidateTemplate(p.HTML); err != nil {
 		return err
 	}
@@ -96,7 +65,12 @@ func GetPages(uid int64) ([]Page, error) {
 		log.Error(err)
 		return ps, err
 	}
-	return ps, err
+	for i := range ps {
+		if err := ps[i].parseHTML(); err != nil {
+			return nil, err
+		}
+	}
+	return ps, nil
 }
 
 // GetPage returns the page, if it exists, specified by the given id and user_id.
@@ -105,6 +79,9 @@ func GetPage(id int64, uid int64) (Page, error) {
 	err := db.Where("user_id=? and id=?", uid, id).Find(&p).Error
 	if err != nil {
 		log.Error(err)
+	}
+	if err == nil {
+		err = p.parseHTML()
 	}
 	return p, err
 }
@@ -115,6 +92,9 @@ func GetPageByName(n string, uid int64) (Page, error) {
 	err := db.Where("user_id=? and name=?", uid, n).Find(&p).Error
 	if err != nil {
 		log.Error(err)
+	}
+	if err == nil {
+		err = p.parseHTML()
 	}
 	return p, err
 }

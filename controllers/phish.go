@@ -5,6 +5,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"io"
 	"net"
 	"net/http"
 	"strings"
@@ -126,8 +127,15 @@ func (ps *PhishingServer) registerRoutes() {
 	phishHandler = handlers.ProxyHeaders(phishHandler)
 
 	// Setup logging
-	phishHandler = handlers.CombinedLoggingHandler(log.Writer(), phishHandler)
+	phishHandler = handlers.CustomLoggingHandler(log.Writer(), phishHandler, logPhishingRequest)
 	ps.server.Handler = phishHandler
+}
+
+// logPhishingRequest excludes query strings and referrers, which may contain
+// form values even when a client ignores the page's POST method.
+func logPhishingRequest(writer io.Writer, params handlers.LogFormatterParams) {
+	fmt.Fprintf(writer, "%s %q %q %d %d\n", params.TimeStamp.UTC().Format(time.RFC3339),
+		params.Request.RemoteAddr, params.Request.Method+" "+params.URL.EscapedPath(), params.StatusCode, params.Size)
 }
 
 // TrackHandler tracks emails as they are opened, updating the status for the given Result
@@ -315,8 +323,8 @@ func (ps *PhishingServer) TransparencyHandler(w http.ResponseWriter, r *http.Req
 func setupContext(r *http.Request) (*http.Request, error) {
 	err := r.ParseForm()
 	if err != nil {
-		log.Error(err)
-		return r, err
+		// Parse errors can contain raw form values; do not log them.
+		return r, ErrInvalidRequest
 	}
 	rid := r.Form.Get(models.RecipientParameter)
 	if rid == "" {
@@ -368,7 +376,6 @@ func setupContext(r *http.Request) (*http.Request, error) {
 		log.Error(err)
 	}
 	d := models.EventDetails{
-		Payload: r.Form,
 		Browser: make(map[string]string),
 	}
 	d.Browser["address"] = ip

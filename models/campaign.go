@@ -2,7 +2,6 @@ package models
 
 import (
 	"errors"
-	"net/url"
 	"time"
 
 	log "github.com/gophish/gophish/logger"
@@ -85,9 +84,8 @@ type Event struct {
 }
 
 // EventDetails is a struct that wraps common attributes we want to store
-// in an event
+// in an event. Submitted form values are deliberately excluded.
 type EventDetails struct {
-	Payload url.Values        `json:"payload"`
 	Browser map[string]string `json:"browser"`
 }
 

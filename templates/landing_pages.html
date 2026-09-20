@@ -62,23 +62,10 @@
                         <textarea id="html_editor"></textarea>
                     </div>
                 </div>
-                <div class="checkbox checkbox-primary">
-                    <input id="capture_credentials_checkbox" type="checkbox">
-                    <label for="capture_credentials_checkbox">Capture Submitted Data <i class="fa fa-question-circle"
-                            data-toggle="tooltip" data-placement="right" title="If the landing page contains a form, submitted input (except passwords!) will be captured."></i></label>
-                </div>
-                <div class="checkbox checkbox-primary" id="capture_passwords">
-                    <input id="capture_passwords_checkbox" type="checkbox">
-                    <label for="capture_passwords_checkbox">Capture Passwords</label>
-                    <div class="alert alert-warning">
-                        <i class="fa fa-exclamation-circle"></i> <b>Warning:</b> Credentials are currently <b>not
-                            encrypted</b>. This means that captured passwords are stored in the database as cleartext.
-                        Be careful with this!
-                    </div>
-                </div>
+                <p class="help-block">Form submissions are tracked. Usernames, passwords, and other submitted field values are not collected.</p>
                 <div id="redirect_url">
                     <label class="control-label" for="redirect_url_input">Redirect to: <i class="fa fa-question-circle"
-                            data-toggle="tooltip" data-placement="right" title="This option lets you redirect the user to a page after credentials are submitted."></i></label>
+                            data-toggle="tooltip" data-placement="right" title="This option lets you redirect the user to a page after a form is submitted."></i></label>
                     <div class="form-group">
                         <input id="redirect_url_input" class="form-control" placeholder="http://example.com" />
                     </div>
