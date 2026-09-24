@@ -24,7 +24,8 @@
                     <th>Username</th>
                     <th>Role</th>
                     <th>Last Login</th>
-                    <th class="col-md-2 no-sort"></th>
+                    <th>2FA</th>
+                    <th class="col-md-3 no-sort"></th>
                 </tr>
             </thead>
             <tbody>
@@ -70,6 +71,11 @@
                 <div class="checkbox checkbox-primary">
                     <input id="account_locked_checkbox" type="checkbox">
                     <label for="account_locked_checkbox">Account Locked</label>
+                </div>
+                <div class="checkbox checkbox-primary">
+                    <input id="two_factor_required_checkbox" type="checkbox">
+                    <label for="two_factor_required_checkbox">2FA required</label>
+                    <p class="help-block">Require authenticator setup before the user can access Gophish.</p>
                 </div>
                 <label class="control-label" for="role">Role:</label>
                 <div class="form-group" id="role-select">

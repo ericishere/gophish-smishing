@@ -58,6 +58,7 @@ func GetContext(handler http.Handler) http.HandlerFunc {
 		err := r.ParseForm()
 		if err != nil {
 			http.Error(w, "Error parsing request", http.StatusInternalServerError)
+			return
 		}
 		// Set the context appropriately here.
 		// Set the session
@@ -65,9 +66,10 @@ func GetContext(handler http.Handler) http.HandlerFunc {
 		// Put the session in the context so that we can
 		// reuse the values in different handlers
 		r = ctx.Set(r, "session", session)
-		if id, ok := session.Values["id"]; ok {
-			u, err := models.GetUser(id.(int64))
-			if err != nil {
+		if id, ok := session.Values["id"].(int64); ok {
+			u, err := models.GetUser(id)
+			version, _ := session.Values["two_factor_version"].(int64)
+			if err != nil || u.AccountLocked || version != u.TwoFactorVersion || (u.TwoFactorRequired && len(u.TwoFactorMethods) == 0) {
 				r = ctx.Set(r, "user", nil)
 			} else {
 				r = ctx.Set(r, "user", u)
@@ -110,6 +112,10 @@ func RequireAPIKey(handler http.Handler) http.Handler {
 		u, err := models.GetUserByAPIKey(ak)
 		if err != nil {
 			JSONError(w, http.StatusUnauthorized, "Invalid API Key")
+			return
+		}
+		if u.AccountLocked || (u.TwoFactorRequired && len(u.TwoFactorMethods) == 0) {
+			JSONError(w, http.StatusForbidden, "Account locked or 2FA setup required")
 			return
 		}
 		r = ctx.Set(r, "user", u)
