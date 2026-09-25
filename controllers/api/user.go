@@ -34,6 +34,7 @@ type userRequest struct {
 	Role                   string `json:"role"`
 	PasswordChangeRequired bool   `json:"password_change_required"`
 	AccountLocked          bool   `json:"account_locked"`
+	TwoFactorRequired      *bool  `json:"two_factor_required"`
 }
 
 func (ur *userRequest) Validate(existingUser *models.User) error {
@@ -111,6 +112,9 @@ func (as *Server) Users(w http.ResponseWriter, r *http.Request) {
 			PasswordChangeRequired: ur.PasswordChangeRequired,
 			AccountLocked:          ur.AccountLocked,
 		}
+		if ur.TwoFactorRequired != nil {
+			user.TwoFactorRequired = *ur.TwoFactorRequired
+		}
 		err = models.PutUser(&user)
 		if err != nil {
 			JSONResponse(w, models.Response{Success: false, Message: err.Error()}, http.StatusInternalServerError)
@@ -168,6 +172,13 @@ func (as *Server) User(w http.ResponseWriter, r *http.Request) {
 			log.Errorf("invalid user request received: %v", err)
 			JSONResponse(w, models.Response{Success: false, Message: err.Error()}, http.StatusBadRequest)
 			return
+		}
+		if ur.TwoFactorRequired != nil {
+			if !hasSystem && *ur.TwoFactorRequired != existingUser.TwoFactorRequired {
+				JSONResponse(w, models.Response{Success: false, Message: ErrInsufficientPermission.Error()}, http.StatusForbidden)
+				return
+			}
+			existingUser.TwoFactorRequired = *ur.TwoFactorRequired
 		}
 		existingUser.Username = ur.Username
 		// Only users with the ModifySystem permission are able to update a

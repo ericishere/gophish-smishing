@@ -12,7 +12,8 @@ const save = (id) => {
         password: $("#password").val(),
         role: $("#role").val(),
         password_change_required: $("#force_password_change_checkbox").prop('checked'),
-        account_locked: $("#account_locked_checkbox").prop('checked')
+        account_locked: $("#account_locked_checkbox").prop('checked'),
+        two_factor_required: $("#two_factor_required_checkbox").prop('checked')
     }
     // Submit the user
     if (id != -1) {
@@ -52,6 +53,7 @@ const dismiss = () => {
     $("#role").val("")
     $("#force_password_change_checkbox").prop('checked', true)
     $("#account_locked_checkbox").prop('checked', false)
+    $("#two_factor_required_checkbox").prop('checked', false)
     $("#modal\\.flashes").empty()
 }
 
@@ -74,6 +76,7 @@ const edit = (id) => {
                 $("#role").trigger("change")
                 $("#force_password_change_checkbox").prop('checked', user.password_change_required)
                 $("#account_locked_checkbox").prop('checked', user.account_locked)
+                $("#two_factor_required_checkbox").prop('checked', user.two_factor_required)
                 if (user.username == "admin") {
                     $("#username").attr("disabled", true);
                 }
@@ -160,6 +163,10 @@ const impersonate = (id) => {
                     'Content-Type': 'application/x-www-form-urlencoded',
                   },
           }).then((response) => {
+                if (new URL(response.url).pathname === "/two_factor") {
+                    window.location.href = "/two_factor"
+                    return
+                }
                 if (response.status == 200) {
                     Swal.fire({
                         title: "Success!",
@@ -183,6 +190,42 @@ const impersonate = (id) => {
             })
         }
       })
+}
+
+const resetTwoFactor = (id) => {
+    const target = users.find(x => x.id == id)
+    if (!target) { return }
+    Swal.fire({
+        title: 'Reset 2FA for ' + escapeHtml(target.username) + '?',
+        text: 'This removes all authenticator methods and signs out the user. If 2FA is required, they must set it up again. Enter your administrator password to continue.',
+        input: 'password',
+        inputPlaceholder: 'Your current password',
+        showCancelButton: true,
+        confirmButtonText: 'Reset 2FA',
+        confirmButtonColor: '#428bca',
+        showLoaderOnConfirm: true,
+        preConfirm: (password) => {
+            if (!password) {
+                Swal.showValidationMessage('Enter your current password')
+                return false
+            }
+            return $.post('/users/' + id + '/two_factor/reset', {
+                csrf_token: csrf_token,
+                current_password: password
+            }).then((response) => response, (response) => {
+                Swal.showValidationMessage((response.responseJSON || {}).message || 'Unable to reset 2FA')
+            })
+        }
+    }).then((result) => {
+        if (result.value) {
+            if (id == user.id) {
+                window.location.href = "/login"
+                return
+            }
+            successFlash(result.value.message)
+            load()
+        }
+    })
 }
 
 const load = () => {
@@ -211,9 +254,13 @@ const load = () => {
                     escapeHtml(user.username),
                     escapeHtml(user.role.name),
                     lastlogin,
+                    user.two_factor_required ? ((user.two_factor_methods || []).length ? "Required (enabled)" : "Required (setup pending)") : ((user.two_factor_methods || []).length ? "Enabled" : "Not enabled"),
                     "<div class='pull-right'>\
                     <button class='btn btn-warning impersonate_button' data-user-id='" + user.id + "'>\
                     <i class='fa fa-retweet'></i>\
+                    </button>\
+                    <button class='btn btn-default reset_two_factor_button' title='Reset 2FA' aria-label='Reset 2FA' data-user-id='" + user.id + "'>\
+                    <i class='fa fa-unlock-alt'></i>\
                     </button>\
                     <button class='btn btn-primary edit_button' data-toggle='modal' data-backdrop='static' data-target='#modal' data-user-id='" + user.id + "'>\
                     <i class='fa fa-pencil'></i>\
@@ -259,6 +306,9 @@ $(document).ready(function () {
     })
     $("#userTable").on('click', '.delete_button', function (e) {
         deleteUser($(this).attr('data-user-id'))
+    })
+    $("#userTable").on('click', '.reset_two_factor_button', function () {
+        resetTwoFactor($(this).attr('data-user-id'))
     })
     $("#userTable").on('click', '.impersonate_button', function (e) {
         impersonate($(this).attr('data-user-id'))

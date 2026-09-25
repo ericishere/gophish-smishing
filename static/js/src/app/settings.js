@@ -1,4 +1,12 @@
 $(document).ready(function () {
+    if (window.location.hash === '#twoFactorSettings') {
+        $('a[href="#twoFactorSettings"]').tab('show')
+    }
+    $('.two-factor-delete-form').on('submit', function (e) {
+        if (!window.confirm('Delete this authenticator? It will no longer work when signing in.')) {
+            e.preventDefault()
+        }
+    })
     $('[data-toggle="tooltip"]').tooltip();
     $("#apiResetForm").submit(function (e) {
         api.reset()

@@ -64,3 +64,8 @@ LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
 OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN
 THE SOFTWARE.
 ```
+
+### Two-factor authentication
+
+Gophish supports TOTP authenticator apps, including Google Authenticator, with
+optional or administrator-required enrollment. See the [setup and recovery guide](doc/two_factor_authentication.md).

@@ -121,7 +121,12 @@ func (as *AdminServer) registerRoutes() {
 	// Base Front-end routes
 	router.HandleFunc("/", mid.Use(as.Base, mid.RequireLogin))
 	router.HandleFunc("/login", mid.Use(as.Login, as.limiter.Limit))
-	router.HandleFunc("/logout", mid.Use(as.Logout, mid.RequireLogin))
+	router.HandleFunc("/logout", as.Logout).Methods("GET", "POST")
+	router.HandleFunc("/two_factor", mid.Use(as.TwoFactor, as.limiter.Limit)).Methods("GET", "POST")
+	router.HandleFunc("/two_factor/qr", as.TwoFactorQR).Methods("GET")
+	router.HandleFunc("/settings/two_factor", mid.Use(as.TwoFactorSettings, as.limiter.Limit, mid.RequireLogin)).Methods("GET", "POST")
+	router.HandleFunc("/settings/two_factor/qr", mid.Use(as.TwoFactorQR, mid.RequireLogin)).Methods("GET")
+	router.HandleFunc("/users/{id:[0-9]+}/two_factor/reset", mid.Use(as.ResetUserTwoFactor, as.limiter.Limit, mid.RequirePermission(models.PermissionModifySystem), mid.RequireLogin)).Methods("POST")
 	router.HandleFunc("/reset_password", mid.Use(as.ResetPassword, mid.RequireLogin))
 	router.HandleFunc("/campaigns", mid.Use(as.Campaigns, mid.RequireLogin))
 	router.HandleFunc("/campaigns/{id:[0-9]+}", mid.Use(as.CampaignID, mid.RequireLogin))
@@ -254,7 +259,13 @@ func (as *AdminServer) Settings(w http.ResponseWriter, r *http.Request) {
 		params := newTemplateParams(r)
 		params.Title = "Settings"
 		session := ctx.Get(r, "session").(*sessions.Session)
-		session.Save(r, w)
+		if token, ok := session.Values["two_factor_enrollment"].(string); ok {
+			models.CancelTwoFactor(token)
+			delete(session.Values, "two_factor_enrollment")
+		}
+		if !as.saveSession(w, r) {
+			return
+		}
 		getTemplate(w, "settings").ExecuteTemplate(w, "base", params)
 	case r.Method == "POST":
 		u := ctx.Get(r, "user").(models.User)
@@ -282,6 +293,9 @@ func (as *AdminServer) Settings(w http.ResponseWriter, r *http.Request) {
 			msg.Message = err.Error()
 			msg.Success = false
 			api.JSONResponse(w, msg, http.StatusInternalServerError)
+			return
+		}
+		if !as.saveAuthenticatedSession(w, r, u) {
 			return
 		}
 		api.JSONResponse(w, msg, http.StatusOK)
@@ -318,7 +332,9 @@ func (as *AdminServer) handleInvalidLogin(w http.ResponseWriter, r *http.Request
 		Token   string
 	}{Title: "Login", Token: csrf.Token(r)}
 	params.Flashes = session.Flashes()
-	session.Save(r, w)
+	if !as.saveSession(w, r) {
+		return
+	}
 	templates := template.New("template")
 	_, err := templates.ParseFiles("templates/login.html", "templates/flashes.html")
 	if err != nil {
@@ -347,9 +363,8 @@ func (as *AdminServer) Impersonate(w http.ResponseWriter, r *http.Request) {
 			http.Error(w, err.Error(), http.StatusNotFound)
 			return
 		}
-		session := ctx.Get(r, "session").(*sessions.Session)
-		session.Values["id"] = u.Id
-		session.Save(r, w)
+		as.startLogin(w, r, u)
+		return
 	}
 	http.Redirect(w, r, "/", http.StatusFound)
 }
@@ -367,7 +382,9 @@ func (as *AdminServer) Login(w http.ResponseWriter, r *http.Request) {
 	switch {
 	case r.Method == "GET":
 		params.Flashes = session.Flashes()
-		session.Save(r, w)
+		if !as.saveSession(w, r) {
+			return
+		}
 		templates := template.New("template")
 		_, err := templates.ParseFiles("templates/login.html", "templates/flashes.html")
 		if err != nil {
@@ -394,24 +411,18 @@ func (as *AdminServer) Login(w http.ResponseWriter, r *http.Request) {
 			as.handleInvalidLogin(w, r, "Account Locked")
 			return
 		}
-		u.LastLogin = time.Now().UTC()
-		err = models.PutUser(&u)
-		if err != nil {
-			log.Error(err)
-		}
-		// If we've logged in, save the session and redirect to the dashboard
-		session.Values["id"] = u.Id
-		session.Save(r, w)
-		as.nextOrIndex(w, r)
+		as.startLogin(w, r, u)
 	}
 }
 
 // Logout destroys the current user session
 func (as *AdminServer) Logout(w http.ResponseWriter, r *http.Request) {
 	session := ctx.Get(r, "session").(*sessions.Session)
-	delete(session.Values, "id")
+	clearTwoFactorSession(session)
 	Flash(w, r, "success", "You have successfully logged out")
-	session.Save(r, w)
+	if !as.saveSession(w, r) {
+		return
+	}
 	http.Redirect(w, r, "/login", http.StatusFound)
 }
 
@@ -432,7 +443,9 @@ func (as *AdminServer) ResetPassword(w http.ResponseWriter, r *http.Request) {
 	session := ctx.Get(r, "session").(*sessions.Session)
 	if !u.PasswordChangeRequired {
 		Flash(w, r, "info", "Please reset your password through the settings page")
-		session.Save(r, w)
+		if !as.saveSession(w, r) {
+			return
+		}
 		http.Redirect(w, r, "/settings", http.StatusTemporaryRedirect)
 		return
 	}
@@ -441,7 +454,9 @@ func (as *AdminServer) ResetPassword(w http.ResponseWriter, r *http.Request) {
 	switch {
 	case r.Method == http.MethodGet:
 		params.Flashes = session.Flashes()
-		session.Save(r, w)
+		if !as.saveSession(w, r) {
+			return
+		}
 		getTemplate(w, "reset_password").ExecuteTemplate(w, "base", params)
 		return
 	case r.Method == http.MethodPost:
@@ -451,7 +466,9 @@ func (as *AdminServer) ResetPassword(w http.ResponseWriter, r *http.Request) {
 		if err != nil {
 			Flash(w, r, "danger", err.Error())
 			params.Flashes = session.Flashes()
-			session.Save(r, w)
+			if !as.saveSession(w, r) {
+				return
+			}
 			w.WriteHeader(http.StatusBadRequest)
 			getTemplate(w, "reset_password").ExecuteTemplate(w, "base", params)
 			return
@@ -461,9 +478,14 @@ func (as *AdminServer) ResetPassword(w http.ResponseWriter, r *http.Request) {
 		if err = models.PutUser(&u); err != nil {
 			Flash(w, r, "danger", err.Error())
 			params.Flashes = session.Flashes()
-			session.Save(r, w)
+			if !as.saveSession(w, r) {
+				return
+			}
 			w.WriteHeader(http.StatusInternalServerError)
 			getTemplate(w, "reset_password").ExecuteTemplate(w, "base", params)
+			return
+		}
+		if !as.saveAuthenticatedSession(w, r, u) {
 			return
 		}
 		// TODO: We probably want to flash a message here that the password was

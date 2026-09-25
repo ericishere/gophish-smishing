@@ -787,3 +787,24 @@ table.dataTable {
     padding: 2px 6px;
     white-space: nowrap;
 }
+/* Keep authenticator setup within the existing sign-in layout. */
+.form-signin.two-factor-form {
+    max-width: 520px;
+    margin-top: 24px;
+}
+
+.two-factor-form #logo {
+    width: 96px;
+    height: auto;
+}
+
+.two-factor-form .form-signin-heading {
+    font-size: 28px;
+    line-height: 1.25;
+    margin-top: 18px;
+}
+
+.two-factor-form #setup-key {
+    font-family: monospace;
+    font-size: 14px;
+}

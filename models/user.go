@@ -14,29 +14,34 @@ var ErrModifyingOnlyAdmin = errors.New("Cannot remove the only administrator")
 
 // User represents the user model for gophish.
 type User struct {
-	Id                     int64     `json:"id"`
-	Username               string    `json:"username" sql:"not null;unique"`
-	Hash                   string    `json:"-"`
-	ApiKey                 string    `json:"api_key" sql:"not null;unique"`
-	Role                   Role      `json:"role" gorm:"association_autoupdate:false;association_autocreate:false"`
-	RoleID                 int64     `json:"-"`
-	PasswordChangeRequired bool      `json:"password_change_required"`
-	AccountLocked          bool      `json:"account_locked"`
-	LastLogin              time.Time `json:"last_login"`
+	Id                     int64             `json:"id"`
+	Username               string            `json:"username" sql:"not null;unique"`
+	Hash                   string            `json:"-"`
+	ApiKey                 string            `json:"api_key" sql:"not null;unique"`
+	Role                   Role              `json:"role" gorm:"association_autoupdate:false;association_autocreate:false"`
+	RoleID                 int64             `json:"-"`
+	PasswordChangeRequired bool              `json:"password_change_required"`
+	AccountLocked          bool              `json:"account_locked"`
+	LastLogin              time.Time         `json:"last_login"`
+	TwoFactorRequired      bool              `json:"two_factor_required"`
+	TwoFactorVersion       int64             `json:"-"`
+	TwoFactorFailures      int               `json:"-"`
+	TwoFactorBlockedUntil  int64             `json:"-"`
+	TwoFactorMethods       []TwoFactorMethod `json:"two_factor_methods" gorm:"foreignkey:UserID;association_autoupdate:false;association_autocreate:false"`
 }
 
 // GetUser returns the user that the given id corresponds to. If no user is found, an
 // error is thrown.
 func GetUser(id int64) (User, error) {
 	u := User{}
-	err := db.Preload("Role").Where("id=?", id).First(&u).Error
+	err := db.Preload("Role").Preload("TwoFactorMethods").Where("id=?", id).First(&u).Error
 	return u, err
 }
 
 // GetUsers returns the users registered in Gophish
 func GetUsers() ([]User, error) {
 	us := []User{}
-	err := db.Preload("Role").Find(&us).Error
+	err := db.Preload("Role").Preload("TwoFactorMethods").Find(&us).Error
 	return us, err
 }
 
@@ -44,7 +49,7 @@ func GetUsers() ([]User, error) {
 // error is thrown.
 func GetUserByAPIKey(key string) (User, error) {
 	u := User{}
-	err := db.Preload("Role").Where("api_key = ?", key).First(&u).Error
+	err := db.Preload("Role").Preload("TwoFactorMethods").Where("api_key = ?", key).First(&u).Error
 	return u, err
 }
 
@@ -52,14 +57,13 @@ func GetUserByAPIKey(key string) (User, error) {
 // error is thrown.
 func GetUserByUsername(username string) (User, error) {
 	u := User{}
-	err := db.Preload("Role").Where("username = ?", username).First(&u).Error
+	err := db.Preload("Role").Preload("TwoFactorMethods").Where("username = ?", username).First(&u).Error
 	return u, err
 }
 
 // PutUser updates the given user
 func PutUser(u *User) error {
-	err := db.Save(u).Error
-	return err
+	return saveUser(u)
 }
 
 // EnsureEnoughAdmins ensures that there is more than one user account in
@@ -157,6 +161,9 @@ func DeleteUser(id int64) error {
 		}
 	}
 	// Finally, delete the user
+	if err = ResetTwoFactor(id); err != nil {
+		return err
+	}
 	err = db.Where("id=?", id).Delete(&User{}).Error
 	return err
 }
