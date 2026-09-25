@@ -218,6 +218,10 @@ const resetTwoFactor = (id) => {
         }
     }).then((result) => {
         if (result.value) {
+            if (id == user.id) {
+                window.location.href = "/login"
+                return
+            }
             successFlash(result.value.message)
             load()
         }

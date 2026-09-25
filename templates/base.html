@@ -18,6 +18,7 @@
     <script>
         {{if .User}}
     var user = {
+        id : {{ .User.Id }},
         api_key : {{ .User.ApiKey }},
         username : {{ .User.Username }}
     }
